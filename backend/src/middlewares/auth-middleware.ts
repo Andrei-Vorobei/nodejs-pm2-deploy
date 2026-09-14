@@ -11,7 +11,9 @@ export const authMiddleware = (req: SessionRequest, res: Response, next: NextFun
     return;
   }
 
-  if (req.path === '/signin' || req.path === '/signup') {
+  if ((req.method === 'POST' && req.path === '/signin')
+    || (req.method === 'POST' && req.path === '/signup')
+    || (req.method === 'GET' && req.path === '/crash-test')) {
     next();
     return;
   }
@@ -29,7 +31,7 @@ export const authMiddleware = (req: SessionRequest, res: Response, next: NextFun
     const payload = jwt.verify(token, JWT_KEY);
     req.user = payload as { _id: string };
     next();
-  } catch (err) {
+  } catch {
     next(new Error('Ошибка авторизации'));
   }
 };
