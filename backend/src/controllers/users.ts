@@ -1,94 +1,139 @@
-import bcrypt from 'bcryptjs';
+import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import {
-  Request,
-  Response,
-  NextFunction,
-} from 'express';
+import bcrypt from 'bcryptjs';
+import { MongoServerError } from 'mongodb';
+
 import User from '../models/user';
-import { JWT_SECRET } from '../config';
-import BadRequestError from '../errors/bad-request-error';
-import NotFoundError from '../errors/not-found-error';
-import ConflictError from '../errors/conflict-error';
+import type { SessionRequest } from '../types/types';
+import { errorMessages } from '../constants/constants';
 
-const login = (req: Request, res: Response, next: NextFunction) => {
-  const { email, password } = req.body;
-  return User.findUserByCredentials(email, password)
-    .then((user) => {
-      const token = jwt.sign({ _id: user._id }, JWT_SECRET);
-      return res
-        .cookie('jwt', token, {
+const { JWT_KEY = '' } = process.env;
 
-          maxAge: 3600000,
-          httpOnly: true,
-          sameSite: true,
-        })
-        .send({ token });
-    })
-    .catch(next);
+export const getAllUsers = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const users = await User.find({});
+    if (!users) {
+      throw new Error(errorMessages.userNotFound);
+    }
+    res.json({ data: users });
+  } catch (error) {
+    next(error);
+  }
 };
 
-const createUser = (req: Request, res: Response, next: NextFunction) => {
-  const {
-    name, about, avatar, password, email,
-  } = req.body;
+export const getUserById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    if (!req.params.userId) {
+      throw new Error(errorMessages.getUserDataError);
+    }
+    const user = await User.findById(req.params.userId);
+    if (!user) {
+      throw new Error(errorMessages.userNotFound);
+    }
+    res.json({ data: user });
+  } catch (error) {
+    next(error);
+  }
+};
 
-  bcrypt.hash(password, 10)
-    .then((hash) => User.create({
-      name, about, avatar, email, password: hash,
-    }))
-    .then((data) => res.status(201).send(data))
-    .catch((err) => {
-      if (err.name === 'ValidationError') {
-        next(new BadRequestError(err.message));
-      } else if (err.code === 11000) {
-        next(new ConflictError('Пользователь с данным email уже существует'));
-      } else {
-        next(err);
-      }
+export const getCurrentUser = async (req: SessionRequest, res: Response, next: NextFunction) => {
+  try {
+    const user = await User.findById(req.user?._id);
+    if (!user) {
+      throw new Error(errorMessages.userNotFound);
+    }
+    res.json({ data: user });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createUser = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { password, email } = req.body;
+    if (!password || !email) {
+      throw new Error(errorMessages.createUserDataError);
+    }
+    const passwordHash = await bcrypt.hash(password, 10);
+    const newUser = await User.create({ password: passwordHash, email });
+    const token = jwt.sign({ _id: newUser._id }, JWT_KEY, { expiresIn: '7d' });
+    res.status(201).json({
+      token,
+      data: {
+        email: newUser.email,
+        message: 'Пользователь успешно создан',
+      },
     });
+  } catch (error) {
+    if (error instanceof MongoServerError && error.code === 11000) {
+      next(new Error(errorMessages.userAlreadyExists));
+      return;
+    }
+
+    next(error);
+  }
 };
 
-const getUserData = (id: string, res: Response, next: NextFunction) => {
-  User.findById(id)
-    .orFail(() => new NotFoundError('Пользователь по заданному id отсутствует в базе'))
-    .then((users) => res.send(users))
-    .catch(next);
+export const updateUserById = async (req: SessionRequest, res: Response, next: NextFunction) => {
+  try {
+    const { name, about, avatar } = req.body;
+    if (name === undefined && about === undefined && avatar === undefined) {
+      throw new Error(errorMessages.updateProfileDataError);
+    }
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user?._id,
+      { name, about, avatar },
+      { new: true, runValidators: true },
+    );
+    if (!updatedUser) {
+      throw new Error(errorMessages.userNotFound);
+    }
+    res.json({ data: updatedUser });
+  } catch (error) {
+    next(error);
+  }
 };
 
-const getUser = (req: Request, res: Response, next: NextFunction) => {
-  getUserData(req.params.id, res, next);
+export const updateUserAvatar = async (req: SessionRequest, res: Response, next: NextFunction) => {
+  try {
+    const { avatar } = req.body;
+    if (avatar === undefined) {
+      throw new Error(errorMessages.updateAvatarError);
+    }
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user?._id,
+      { avatar },
+      { new: true, runValidators: true },
+    );
+    if (!updatedUser) {
+      throw new Error(errorMessages.userNotFound);
+    }
+    res.json({ data: updatedUser });
+  } catch (error) {
+    next(error);
+  }
 };
 
-const getCurrentUser = (req: Request, res: Response, next: NextFunction) => {
-  getUserData(req.user._id, res, next);
-};
-
-const updateUserData = (req: Request, res: Response, next: NextFunction) => {
-  const { user: { _id }, body } = req;
-  User.findByIdAndUpdate(_id, body, { new: true, runValidators: true })
-    .orFail(() => new NotFoundError('Пользователь по заданному id отсутствует в базе'))
-    .then((user) => res.send(user))
-    .catch(next);
-};
-
-const updateUserInfo = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => updateUserData(req, res, next);
-
-const updateUserAvatar = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => updateUserData(req, res, next);
-
-export {
-  login,
-  updateUserInfo,
-  updateUserAvatar,
-  createUser,
-  getUser,
-  getCurrentUser,
+export const login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      throw new Error(errorMessages.invalidEmailOrPassword);
+    }
+    const user = await User.findUserByCredentials(email, password);
+    if (!user) {
+      throw new Error(errorMessages.invalidEmailOrPassword);
+    }
+    const token = jwt.sign({ _id: user._id }, JWT_KEY, { expiresIn: '7d' });
+    res.status(200).json({
+      token,
+      message: 'Угадал',
+    });
+  } catch (error) {
+    next(error);
+  }
 };

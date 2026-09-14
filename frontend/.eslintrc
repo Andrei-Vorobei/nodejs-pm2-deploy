@@ -1,0 +1,44 @@
+{
+    "env": {
+        "browser": true,
+        "es2021": true
+    },
+    "extends": [
+        "airbnb",
+        "airbnb/hooks"
+    ],
+    "parserOptions": {
+        "ecmaFeatures": {
+            "jsx": true
+        },
+        "ecmaVersion": "latest",
+        "sourceType": "module"
+    },
+    "settings": {
+        "react": {
+            "version": "detect"
+        }
+    },
+    "rules": {
+        "react/prop-types": "off",
+        "react/react-in-jsx-scope": "off",
+        "react/jsx-no-bind": "off",
+        "import/prefer-default-export": "off",
+        "import/no-extraneous-dependencies": [
+            "error",
+            {
+                "devDependencies": ["**/setupTests.js", "vite.config.js", "**/*.test.js", "**/*.test.jsx"]
+            }
+        ],
+        "jsx-a11y/label-has-associated-control": "warn",
+        "jsx-a11y/control-has-associated-label": "warn",
+        "jsx-a11y/click-events-have-key-events": "warn",
+        "jsx-a11y/no-static-element-interactions": "warn",
+        "no-underscore-dangle": [
+            "error",
+            {
+                "allow": ["_id"]
+            }
+        ]
+    }
+}

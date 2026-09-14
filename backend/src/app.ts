@@ -1,26 +1,49 @@
 import 'dotenv/config';
-
+// import path from 'path';
 import express from 'express';
 import mongoose from 'mongoose';
 import cookieParser from 'cookie-parser';
+import cors from 'cors';
 import { errors } from 'celebrate';
-// import cors from 'cors';
-import errorHandler from './middlewares/error-handler';
-import { DB_ADDRESS } from './config';
-import routes from './routes';
 
-const { PORT = 3000 } = process.env;
+import appRouter from './routes/index';
+import { errorMiddleware } from './middlewares/error-middleware';
+import { login, createUser } from './controllers/users';
+import { authMiddleware } from './middlewares/auth-middleware';
+import { requestLogger, errorLogger } from './middlewares/logger-middleware';
+import { userAuthValidator } from './validators/user';
+
+const { PORT = 3000, MONGODB_URI } = process.env;
 const app = express();
-mongoose.connect(DB_ADDRESS);
 
-// Только для локальных тестов. Не используйте это в продакшене
-// app.use(cors())
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(routes);
-app.use(errors());
-app.use(errorHandler);
 
-// eslint-disable-next-line no-console
-app.listen(PORT, () => console.log('ok'));
+mongoose.connect(MONGODB_URI || 'mongodb://localhost:27017/mestodb');
+// app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(express.urlencoded({ extended: false }));
+app.use(express.json());
+
+app.use(requestLogger);
+
+app.use(cors({
+  origin: ['https://magic-friday.ru', 'http://magic-friday.ru', 'http://localhost:3000'],
+  credentials: true,
+}));
+
+app.post('/signin', userAuthValidator, login);
+app.post('/signup', userAuthValidator, createUser);
+
+app.use(authMiddleware);
+
+app.use('/', appRouter);
+
+app.use(errorLogger);
+
+app.use(errors());
+
+app.use(errorMiddleware);
+
+app.listen(PORT, () => {
+  console.log(`Сервер запущен на порту ${PORT}`);
+});

@@ -1,64 +1,86 @@
-import {
-  Request, Response, NextFunction,
-} from 'express';
+import { Request, Response, NextFunction } from 'express';
+
 import Card from '../models/card';
-import BadRequestError from '../errors/bad-request-error';
-import NotFoundError from '../errors/not-found-error';
-import ForbiddenError from '../errors/forbidden-error';
+import type { SessionRequest } from '../types/types';
 
-const getCards = (req: Request, res: Response, next: NextFunction) => {
-  Card.find({})
-    .then((cards) => res.send(cards))
-    .catch(next);
+export const getAllCards = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const cards = await Card.find({});
+    if (!cards) {
+      throw new Error('Карточки не найдены');
+    }
+    res.json({ data: cards });
+  } catch (error) {
+    next(error);
+  }
 };
 
-const createCard = (req: Request, res: Response, next: NextFunction) => {
-  const owner = req.user._id;
-  const { name, link } = req.body;
-  Card.create({ name, link, owner })
-    .then((card) => res.status(201).send(card))
-    .catch((err) => {
-      if (err.name === 'ValidationError') {
-        next(new BadRequestError(err.message));
-      } else {
-        next(err);
-      }
-    });
+export const createCard = async (req: SessionRequest, res: Response, next: NextFunction) => {
+  try {
+    const { name, link } = req.body;
+    if (name === undefined || link === undefined) {
+      throw new Error('Переданы некорректные данные при создании карточки');
+    }
+    const newCard = await Card.create({ name, link, owner: req.user?._id });
+    res.status(201).json({ data: newCard });
+  } catch (error) {
+    next(error);
+  }
 };
 
-const deleteCard = (req: Request, res: Response, next: NextFunction) => {
-  const { id } = req.params;
-  Card.findById(id)
-    .orFail(() => new NotFoundError('Нет карточки по заданному id'))
-    .then((card) => {
-      if (card.owner.toString() !== req.user._id) {
-        throw new ForbiddenError('Нельзя удалить чужую карточку');
-      } else {
-        return Card.deleteOne({ _id: card._id })
-          .then(() => res.send(card));
-      }
-    })
-    .catch(next);
+export const deleteCardById = async (req: SessionRequest, res: Response, next: NextFunction) => {
+  try {
+    const { user } = req;
+    if (!req.params.cardId) {
+      throw new Error('Переданы некорректные данные при удалении карточки');
+    }
+    const deletedCard = await Card.deleteOne({ _id: req.params.cardId, owner: user?._id });
+    if (deletedCard.deletedCount === 0) {
+      throw new Error('Карточка не найдена');
+    }
+    res.json({ message: 'Карточка успешно удалена', data: deletedCard });
+  } catch (error) {
+    next(error);
+  }
 };
 
-const updateLike = (req: Request, res: Response, next: NextFunction, method: string) => {
-  const { params: { id } } = req;
-  Card.findByIdAndUpdate(id, { [method]: { likes: req.user._id } }, { new: true })
-    .orFail(() => new NotFoundError('Нет карточки по заданному id'))
-    .then((card) => {
-      res.send(card);
-    })
-    .catch(next);
+export const likeCard = async (req: SessionRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.params.cardId) {
+      throw new Error('Переданы некорректные данные при обновлении карточки');
+    }
+    const updatedCard = await Card.findByIdAndUpdate(
+      req.params.cardId,
+      { $addToSet: { likes: req.user?._id } },
+      { new: true },
+    );
+
+    if (!updatedCard) {
+      throw new Error('Карточка не найдена');
+    }
+    res.json({ message: 'Карточка успешно лайкнута', data: updatedCard });
+  } catch (error) {
+    next(error);
+  }
 };
 
-const likeCard = (req: Request, res: Response, next: NextFunction) => updateLike(req, res, next, '$addToSet');
+export const dislikeCard = async (req: SessionRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.params.cardId) {
+      throw new Error('Переданы некорректные данные при обновлении карточки');
+    }
+    const updatedCard = await Card.findByIdAndUpdate(
+      req.params.cardId,
+      { $pull: { likes: req.user?._id } },
+      { new: true },
+    );
 
-const dislikeCard = (req: Request, res: Response, next: NextFunction) => updateLike(req, res, next, '$pull');
+    if (!updatedCard) {
+      throw new Error('Карточка не найдена');
+    }
 
-export {
-  getCards,
-  createCard,
-  deleteCard,
-  likeCard,
-  dislikeCard,
+    res.json({ message: 'Лайк с карточки успешно удален', data: updatedCard });
+  } catch (error) {
+    next(error);
+  }
 };

@@ -1,26 +1,40 @@
+import { Router } from 'express';
+
 import {
-  Router, Request, Response, NextFunction,
-} from 'express';
-import userRouter from './users';
-import cardRouter from './cards';
-import auth from '../middlewares/auth';
-import NotFoundError from '../errors/not-found-error';
+  getAllCards, createCard, deleteCardById, likeCard, dislikeCard,
+} from '../controllers/cards';
 import {
-  createUser, login,
+  getAllUsers, getUserById, updateUserById, updateUserAvatar, getCurrentUser,
 } from '../controllers/users';
-import { validateUserBody, validateAuthentication } from '../middlewares/validatons';
+import { userUpdateValidator, userAvatarValidator } from '../validators/user';
+import { cardValidator } from '../validators/card';
 
 const router = Router();
-router.post('/signup', validateUserBody, createUser);
-router.post('/signin', validateAuthentication, login);
 
-// все роуты, кроме /signin и /signup, защищены авторизацией;
-router.use(auth);
-router.use('/users', userRouter);
-router.use('/cards', cardRouter);
-
-router.use((req: Request, res: Response, next: NextFunction) => {
-  next(new NotFoundError('Маршрут не найден'));
+router.get('/crash-test', () => {
+  setTimeout(() => {
+    throw new Error('Server will crash now');
+  }, 0);
 });
+
+router.get('/cards', getAllCards);
+
+router.post('/cards', cardValidator, createCard);
+
+router.delete('/cards/:cardId', deleteCardById);
+
+router.put('/cards/:cardId/likes', likeCard);
+
+router.delete('/cards/:cardId/likes', dislikeCard);
+
+router.get('/users', getAllUsers);
+
+router.get('/users/me', getCurrentUser);
+
+router.get('/users/:userId', getUserById);
+
+router.patch('/users/me', userUpdateValidator, updateUserById);
+
+router.patch('/users/me/avatar', userAvatarValidator, updateUserAvatar);
 
 export default router;

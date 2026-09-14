@@ -12,6 +12,11 @@ node_modules
 # Optional REPL history
 .DS_Store
 .idea
+.vscode
+
+# Typescript build
 dist
+
+# dotenv environment variables file
 .env
 .env.deploy
