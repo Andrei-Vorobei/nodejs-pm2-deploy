@@ -144,7 +144,7 @@ class Api {
       .then(getData);
   }
 }
-// Замените на адрес вашего бэкенда
-const api = new Api('https://api.magic-friday.ru');
+
+const api = new Api(import.meta.env.VITE_API_URL || 'http://localhost:3000');
 
 export default api;

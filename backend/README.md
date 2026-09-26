@@ -1,153 +1,196 @@
-# Бэкенд Mesto
-IP адрес 84.201.170.183
-Frontend https://magic-friday.ru
-Backend https://api.magic-friday.ru
+# Бэкенд Mesto: production-ready deployment guide
 
-REST API для проекта Mesto. Сервер предоставляет авторизацию пользователей, работу с профилем и CRUD-операции для карточек с возможностью ставить и снимать лайки.
+Это REST API проекта Mesto. Сервер отвечает за регистрацию, логин, работу с профилем, карточками и лайками. Приложение работает на Express + TypeScript и хранит данные в MongoDB через Mongoose.
 
-## Стек
+## 1. Стек
 
-- Node.js и Express 5
+- Node.js
+- Express 5
 - TypeScript
-- MongoDB и Mongoose
-- JWT для авторизации
-- bcryptjs для хеширования паролей
-- Celebrate/Joi для валидации входных данных
-- Winston и express-winston для логирования
+- MongoDB + Mongoose
+- JWT
+- bcryptjs
+- Celebrate/Joi
+- Winston
+- CORS, cookie-parser, dotenv
 
-## Требования
+## 2. Основные функции API
 
-- Node.js 20 или новее
-- MongoDB, запущенная локально или доступная по URI
+- `POST /signup` — регистрация
+- `POST /signin` — логин
+- `GET /users` — список пользователей
+- `GET /users/me` — текущий пользователь
+- `GET /users/:userId` — пользователь по ID
+- `PATCH /users/me` — обновление профиля
+- `GET /cards` — список карточек
+- `POST /cards` — создание карточки
+- `DELETE /cards/:cardId` — удаление карточки
+- `PUT /cards/:cardId/likes` — лайк
+- `DELETE /cards/:cardId/likes` — снятие лайка
 
-## Установка и запуск
+## 3. Требования
+
+- Node.js 20+
+- MongoDB
+- PM2 для production
+- доступ к серверу и SSH
+
+## 4. Локальный запуск
+
+### Установка
 
 ```bash
 npm install
-npm run dev
 ```
 
-Доступные команды:
+### Скрипты
 
-| Команда | Назначение |
-| --- | --- |
-| `npm run dev` | Запуск с перезапуском при изменениях через `ts-node-dev` |
-| `npm start` | Запуск приложения через `ts-node` |
-| `npm run build` | Компиляция TypeScript в каталог `dist` |
-| `npm run lint` | Проверка исходников ESLint |
+```bash
+npm run dev
+npm start
+npm run build
+npm run lint
+```
 
-По умолчанию сервер запускается на порту `3000`, а MongoDB подключается к `mongodb://localhost:27017/mestodb`.
+Что они делают:
 
-### Переменные окружения
+- `npm run dev` — запуск в development режиме через `ts-node-dev`
+- `npm start` — запуск напрямую через `ts-node`
+- `npm run build` — сборка TypeScript в `dist`
+- `npm run lint` — проверка ESLint
 
-Создайте файл `.env` в корне проекта:
+## 5. Переменные окружения
+
+Файл `.env`:
 
 ```env
+NODE_ENV=production
 PORT=3000
-MONGODB_URI=mongodb://localhost:27017/mestodb
+MONGODB_URI=mongodb://127.0.0.1:27017/mestodb
 JWT_KEY=replace-with-a-long-random-secret
+CORS_ORIGIN=https://site.ru,https://www.site.ru,https://api.site.ru
 ```
 
-`MONGODB_URI` и `PORT` имеют значения по умолчанию. Для рабочего окружения обязательно задайте непустой `JWT_KEY`.
+## 6. Авторизация
 
-## Авторизация
-
-Регистрация и вход доступны без авторизации:
-
-```http
-POST /signup
-POST /signin
-Content-Type: application/json
-```
-
-Тело запроса для обоих методов:
-
-```json
-{
-	"email": "user@example.com",
-	"password": "Password1!"
-}
-```
-
-Для защищенных запросов передавайте JWT в заголовке:
+API использует JWT в заголовке:
 
 ```http
 Authorization: Bearer <token>
 ```
 
-Пароль должен содержать от 8 до 30 символов, латинскую букву, цифру и специальный символ. После успешной регистрации или входа сервер также устанавливает HttpOnly-cookie `token`, однако текущая middleware авторизации проверяет именно заголовок `Authorization`.
+При логине и регистрации сервер может также выставлять cookie, но основной сценарий авторизации должен работать через заголовок `Authorization`.
 
-## API
+## 7. Production deployment methodology
 
-Все маршруты ниже, кроме `/signup` и `/signin`, требуют авторизации.
+### Шаг 1. Подготовка сервера
 
-### Пользователи
-
-| Метод | Маршрут | Назначение |
-| --- | --- | --- |
-| `POST` | `/signup` | Создать пользователя; ответ `201`, устанавливается JWT-cookie |
-| `POST` | `/signin` | Выполнить вход; устанавливается JWT-cookie |
-| `GET` | `/users` | Получить список пользователей |
-| `GET` | `/users/me` | Получить текущего пользователя |
-| `GET` | `/users/:userId` | Получить пользователя по идентификатору |
-| `PATCH` | `/users/me` | Обновить `name`, `about` и/или `avatar` |
-| `PATCH` | `/users/me/avatar` | Обновить аватар |
-
-Ограничения профиля: `name` содержит от 2 до 30 символов, `about` от 2 до 200 символов, `avatar` должен быть URL с `http` или `https`.
-
-### Карточки
-
-| Метод | Маршрут | Назначение |
-| --- | --- | --- |
-| `GET` | `/cards` | Получить все карточки |
-| `POST` | `/cards` | Создать карточку |
-| `DELETE` | `/cards/:cardId` | Удалить свою карточку |
-| `PUT` | `/cards/:cardId/likes` | Поставить лайк |
-| `DELETE` | `/cards/:cardId/likes` | Убрать лайк |
-
-Тело запроса для создания карточки:
-
-```json
-{
-	"name": "Байкал",
-	"link": "https://example.com/baikal.jpg"
-}
+```bash
+sudo apt update
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+sudo npm install -g pm2
 ```
 
-`name` должен содержать от 2 до 30 символов, `link` должен быть корректным URL. В карточке хранятся название, ссылка, владелец, массив лайков и дата создания.
+### Шаг 2. Подготовка env
 
-## Обработка ошибок
+Сгенерируйте `.env` на сервере с реальными значениями:
 
-Ответ с ошибкой возвращается в формате:
-
-```json
-{
-	"message": "Описание ошибки"
-}
+```env
+PORT=3000
+MONGODB_URI=mongodb://127.0.0.1:27017/mestodb
+JWT_KEY=very-strong-secret
+CORS_ORIGIN=https://site.ru
 ```
 
-Используемые статусы: `400` для некорректных данных, `401` для ошибок авторизации, `403` при отсутствии прав на удаление карточки, `404` если ресурс не найден, `409` при регистрации уже существующего пользователя и `500` для остальных ошибок.
+### Шаг 3. Запуск backend
 
-## Структура проекта
+На сервере:
+
+```bash
+cd /var/www/mesto/current/backend
+npm ci
+npm run build
+pm2 start ecosystem.config.js
+pm2 save
+```
+
+### Шаг 4. Health check
+
+Backend должен иметь endpoint `/health`, чтобы проверять доступность сервиса:
+
+```ts
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+```
+
+### Шаг 5. Graceful shutdown
+
+Для production важно завершать процесс корректно:
+
+```ts
+process.on('SIGINT', async () => {
+  await mongoose.disconnect();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  await mongoose.disconnect();
+  process.exit(0);
+});
+```
+
+### Шаг 6. PM2 deploy
+
+Конфигурация деплоя находится в `backend/ecosystem.config.js`.
+
+После загрузки кода выполняется:
+
+```bash
+cd backend && npm ci && npm run build && pm2 startOrRestart ecosystem.config.js --env production
+```
+
+## 8. Структура исходников
 
 ```text
 src/
-├── app.ts                    # конфигурация Express и подключение MongoDB
-├── constants/                # регулярные выражения и сообщения ошибок
-├── controllers/              # обработчики пользователей и карточек
-├── middlewares/              # авторизация, логирование и ошибки
-├── models/                   # Mongoose-модели User и Card
-├── routes/                   # маршруты API
-├── types/                    # TypeScript-типы
-└── validators/               # схемы Celebrate/Joi
+├── app.ts
+├── constants/
+├── controllers/
+├── middlewares/
+├── models/
+├── routes/
+├── types/
+├── validators/
+└── utils/
 ```
 
-Запросы записываются в `request.log`, ошибки в `error.log`. Эти файлы игнорируются Git.
+## 9. Наблюдаемость и логирование
 
-## Текущее состояние и ограничения
+- `requestLogger` — логи входящих запросов
+- `errorLogger` — логи ошибок
+- `request.log` и `error.log` должны храниться вне Git
 
-- Автоматические тесты в проекте не настроены.
-- `npm run build` компилирует проект успешно.
-- `npm run lint` сейчас сообщает о переводах строк CRLF в TypeScript-файлах, поскольку ESLint ожидает LF.
-- Cookie `token` устанавливается при входе и регистрации, но не используется `authMiddleware` при проверке защищенных маршрутов; для API необходимо передавать Bearer-токен.
-- В `app.ts` нет отдельного health-check маршрута и graceful shutdown для MongoDB.
+## 10. Production checklist
+
+- [ ] MongoDB доступна с сервера
+- [ ] `JWT_KEY` установлен и достаточной длины
+- [ ] CORS настроен под домены production
+- [ ] backend запускается через PM2
+- [ ] есть `/health` endpoint
+- [ ] есть graceful shutdown
+- [ ] нет секретов в git
+- [ ] deploy процесс автоматизирован
+
+## 11. Рекомендации
+
+Для действительно production-ready окружения стоит добавить:
+
+- отдельные `staging` и `production` окружения
+- CI/CD для проверки сборки и деплоя
+- резервное копирование MongoDB
+- централизованный сбор логов
+- ограничения на rate limit и body size
+- HTTPS через Nginx/Certbot
+
